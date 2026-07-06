@@ -1,6 +1,4 @@
-using System.Transactions;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Kiota.Http.HttpClientLibrary;
 using S4HANABusinessPartners.Client;
@@ -12,18 +10,22 @@ namespace KiotaSAP.Controllers
     public class BusinessPartnersController : ControllerBase
     {
         private readonly S4HANABusinessPartnersClient _businessPartnersClient;
-        public BusinessPartnersController()
+        private readonly IConfiguration _configuration;
+
+        public BusinessPartnersController(IConfiguration configuration)
         {
-            var handler = new SapClientHandler
+            _configuration = configuration;
+
+            var handler = new SapClientHandler(_configuration)
             {
                 InnerHandler = new HttpClientHandler()
             };
 
             var httpClient = new HttpClient(handler);
 
-            var authProvider = new BasicAuthenticationProvider("sandbox", "password");
+            var authProvider = new BasicAuthenticationProvider(configuration["SAP:Username"]!, configuration["SAP:Password"]!);
             // Create request adapter using the HttpClient-based implementation
-            var adapter = new HttpClientRequestAdapter(authProvider , httpClient: httpClient);
+            var adapter = new HttpClientRequestAdapter(authProvider, httpClient: httpClient);
             // Create the API client
             _businessPartnersClient = new S4HANABusinessPartnersClient(adapter);
         }
@@ -31,19 +33,23 @@ namespace KiotaSAP.Controllers
         [HttpGet(Name = "GetBusinessPartners")]
         public async Task<S4HANABusinessPartners.Client.Models.A_BusinessPartnerType> Get(String id)
         {
-            System.Console.WriteLine("Test");
-            
             var response = await _businessPartnersClient.A_BusinessPartner.GetAsA_BusinessPartnerGetResponseAsync(config =>
             {
                 config.QueryParameters.Filter = $"BusinessPartner eq '{id}'";
             });
-            
+
             return response!.D!.Results!.Single();
         }
     }
-
     public class SapClientHandler : DelegatingHandler
     {
+        private readonly IConfiguration _configuration;
+
+        public SapClientHandler(IConfiguration configuration)
+        {
+            _configuration = configuration;
+        }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -52,7 +58,7 @@ namespace KiotaSAP.Controllers
 
             var query = System.Web.HttpUtility.ParseQueryString(builder.Query);
             query["saml2"] = "disabled";
-            query["sap-client"] = "500";
+            query["sap-client"] = _configuration["SAP:Client"];
 
             builder.Query = query.ToString();
 
